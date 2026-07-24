@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <strong>An LLM that swipes Hinge for you.</strong><br/>
+  <strong>LLM = Love Lookin' Model.</strong><br/>
   A stitched-vision + LLM-judge loop that drives a real Hinge install on an Android emulator — it reads each profile, judges it against <em>your</em> rubric, and skips or likes with a personalized opener.
 </p>
 
