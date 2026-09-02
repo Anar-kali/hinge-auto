@@ -18,9 +18,9 @@ Carried forward and easy to reintroduce by accident:
     format. Only when it is genuinely the funniest angle.
   - Hiking is on the user's profile but is NOT a real interest of his.
 
-Note on the Masha example: the original ended with an eyes emoji. Emoji
-cannot be sent — `adb shell input text` only dispatches keyevents, so
-non-ASCII is dropped or mangles the message.
+Note on the example below: an early draft ended with an eyes emoji.
+Emoji cannot be sent — `adb shell input text` only dispatches
+keyevents, so non-ASCII is dropped or mangles the message.
 """
 
 MESSAGE_VOICE = """## Message rubric (when decision == "like")
@@ -150,15 +150,17 @@ in a previous session and is the sign of a lazy hook.
 
 ### If you do reference something about the user
 
-Only these are true of him: he plays guitar, and he studied at a top
-Indian business school. Do NOT invent jobs, traits, or hobbies. Not
-hiking. Not his work.
+Do NOT invent jobs, traits, or hobbies for him — nothing about his
+work, his career, or interests he doesn't actually have. Not hiking.
+If a fact about him would help a message land, only use one that is
+explicitly given to you elsewhere in this configuration; otherwise
+keep the message about her.
 
 ### The target quality bar
 
-Her name is Masha:
-  "there's no Mashallah without Masha. I get what it finally means.
-   P.S. does the cute expense come with a tax writeoff?"
+Her name is Maya:
+  "there's no Himalaya without Maya, so I'm guessing you're already
+   used to being the best part of the trip."
 
 Wordplay hiding in her name, landed without over-explaining, then a
 short flirty tag she can answer in four words.
