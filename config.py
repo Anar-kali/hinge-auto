@@ -14,7 +14,7 @@ from pathlib import Path
 
 # ---------- Mode selection ----------
 # Which `modes/<name>.py` to load. Overridden per-run by `python main.py --mode X`.
-ACTIVE_MODE = "tarun"
+ACTIVE_MODE = "custom"
 
 # These get filled in by _apply_mode() at the bottom of this file. Declared
 # here so static analyzers / IDEs see them. Do not edit by hand — edit the
@@ -145,11 +145,11 @@ OLLAMA_HOST = None
 # GEMINI_API_KEY must be set in .env or the environment.
 #
 # Benchmarked 2026-08-27 on 6 saved profiles against Sonnet's verdicts
-# under the `tarun` rubric (agreement / errors / avg latency):
+# under the `custom` rubric (agreement / errors / avg latency):
 #
-#   gemini-3.5-flash        5/6   0 errors   29.9s   <- chosen (Tarun's
-#                                 pick on message quality; wrote the best
-#                                 single opener of the whole benchmark)
+#   gemini-3.5-flash        5/6   0 errors   29.9s   <- chosen (the
+#                                 user's pick on message quality; wrote
+#                                 the best single opener of the benchmark)
 #   gemini-3.5-flash-lite   6/6   0 errors   26.5s
 #   gemini-3.1-flash-lite   6/6   0 errors   33.0s
 #   gemini-3.6-flash        5/6   0 errors   46.6s

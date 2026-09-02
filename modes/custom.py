@@ -1,10 +1,10 @@
-"""Tarun's mode — his opener voice and his stated rubric.
+"""Custom mode — the user's opener voice and stated rubric.
 
-MESSAGE_VOICE points at voice/tarun.py, written from Tarun's own reply
-style guide.
+MESSAGE_VOICE points at voice/custom.py, written from the user's own
+reply style guide.
 
-PREFERENCES below encodes what Tarun actually stated: intelligence is
-the real type, and strong physical attractiveness is an independent
+PREFERENCES below encodes what the user actually stated: intelligence
+is the real type, and strong physical attractiveness is an independent
 second route to a like — either one alone is enough; brown skin tone is
 explicitly not a negative; obesity is the one hard exclusion.
 
@@ -14,20 +14,20 @@ mostly guesswork, so the rubric below deliberately does NOT gate on it —
 set the in-app Height filter instead (see filters.py).
 """
 
-NAME = "tarun"
+NAME = "custom"
 DESCRIPTION = "Intelligence or strong attractiveness — either passes."
 
-# Not stated by Tarun. Set these, or use Hinge's in-app age filter.
+# Not stated by the user. Set these, or use Hinge's in-app age filter.
 AGE_MIN = None
 AGE_MAX = None
 
-MESSAGE_VOICE = "tarun"
+MESSAGE_VOICE = "custom"
 
 MAX_LIKES_PER_SESSION = None
 MAX_PROFILES_PER_SESSION = None
 
 # Empty on purpose. Premades are sent VERBATIM, bypassing the voice
-# rules — the opposite of what Tarun's guide asks for (every line
+# rules — the opposite of what the user's guide asks for (every line
 # anchored to something specific in her profile). A premade is by
 # definition copy-pasteable to anyone.
 PREMADES = []
@@ -64,7 +64,7 @@ the next section, which passes her on its own.
 
 ## Physical attractiveness: an independent route to a LIKE
 
-Tarun leans toward tall, fit, fair women. This works two ways:
+The user leans toward tall, fit, fair women. This works two ways:
 
 1. As a weighting. It breaks ties between otherwise comparable
    profiles and raises enthusiasm on one that already passes on
@@ -95,12 +95,12 @@ Explicitly:
   is clearly present. Keep this SMALL -- it breaks ties, it never
   carries a profile on its own, and its absence is never a mark
   against anyone.
-- Tarun is less drawn to the darkest end of the skin-tone range. Treat
-  this as a mild reduction in enthusiasm only, applied at the margin
-  on an already-borderline profile. It is NOT a gate and never a
-  skip_reason on its own.
-- Brown and medium skin tones remain explicitly NOT a negative. Tarun
-  stated this directly and it still stands. Do not down-weight them,
+- The user is less drawn to the darkest end of the skin-tone range.
+  Treat this as a mild reduction in enthusiasm only, applied at the
+  margin on an already-borderline profile. It is NOT a gate and never
+  a skip_reason on its own.
+- Brown and medium skin tones remain explicitly NOT a negative. The
+  user stated this directly and it still stands. Do not down-weight them,
   and never let tone hold back a profile that otherwise clears a route.
 - Never mention skin tone in the `reasoning` field, and never in a
   message. Weigh it silently; do not narrate it.

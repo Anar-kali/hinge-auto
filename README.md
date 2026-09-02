@@ -32,6 +32,22 @@
 
 ---
 
+## About this fork
+
+This is a fork of [TerraByte-Dev/hinge-auto](https://github.com/TerraByte-Dev/hinge-auto). Changes on top of upstream:
+
+- **Gemini backend** ([judge_gemini.py](judge_gemini.py)) — a third judge option alongside Anthropic and Ollama, set via `JUDGE_BACKEND = "gemini"` in [config.py](config.py). Benchmarked against Sonnet's verdicts to pick a default model.
+- **Reference-frame-aware likes** — the judge now names which screenshot frame (photo or prompt) an opener is actually about, and `do_like` scrolls to and taps *that* card, instead of always liking photo 1 regardless of what the message references.
+- **More reliable typed-message detection** — waits for the comment field's pixel density to stabilize rather than checking against a fixed target, which was prone to false warnings under CPU contention.
+- **Per-backend metrics** — logs which backend/model actually judged each profile (useful once a run can span multiple backends or models).
+- **First-run onboarding mode** ([modes/first_run.py](modes/first_run.py)) and a `custom` mode + voice ([modes/custom.py](modes/custom.py), [voice/custom.py](voice/custom.py)) as a fleshed-out example of a personal rubric and reply style, on top of upstream's example modes.
+
+Known limitations carried over from active use of this fork:
+- Gemini's free tier caps out around 20 judged profiles/day per model — a longer session can halt mid-run once it's hit.
+- [metrics.py](metrics.py)'s printed cost estimate always uses Anthropic/Sonnet pricing, so the dollar figure is inaccurate on Gemini or Ollama runs (token counts themselves are correct).
+
+---
+
 HingeAuto is what you get when you point a vision-LLM at a phone screen and let
 it date for you. An Android emulator runs a real Hinge install; this repo drives
 it over ADB, judging every profile against a rubric **you** write and acting on
