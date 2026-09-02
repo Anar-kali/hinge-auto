@@ -57,52 +57,80 @@ def find_send_like(png: bytes) -> tuple[int, int] | None:
     return (cx, cy)
 
 
-def find_first_heart(png: bytes) -> tuple[int, int] | None:
-    """Locate the heart icon on photo 1 (topmost heart in current view).
+def _ring_fraction(mask, cx: int, cy: int, r: int, n: int = 48) -> float:
+    """Fraction of n points sampled on a circle of radius r that are set."""
+    ang = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+    xs = np.clip((cx + r * np.cos(ang)).astype(int), 0, mask.shape[1] - 1)
+    ys = np.clip((cy + r * np.sin(ang)).astype(int), 0, mask.shape[0] - 1)
+    return float(mask[ys, xs].mean())
 
-    Hinge's heart-on-photo widget is a white circle (~126x126, area ~10900)
-    overlaid at the photo's bottom-right corner. Profile layouts vary —
-    some have prompt headers above photo 1 ('Me in the wild'), others
-    don't — so photo 1's heart y position drifts profile-to-profile.
 
-    Strategy: find white near-circular blobs of the right size, return
-    the topmost one (lowest y) since that's photo 1 when scrolled to top.
+def _hearts_by_glyph(glyph, disc) -> list[tuple[int, int]]:
+    """Locate heart badges via the small glyph, confirming the disc colour
+    fills the ring around it. Returns (cy, cx) pairs.
 
-    Filters tuned to reject clothing false-positives (white dresses, shirts
-    can blob-match by raw size). Real Hinge hearts are always:
-      - right-aligned (x_center > 800) — the icon sits at the photo's
-        bottom-right corner
-      - near-circular (|w-h| < 15) — clothing blobs are elongated
-      - area >= 8500 — clothing fragments tend to be smaller circular
-        regions; the heart's white circle is ~10800-11000 px
+    Anchoring on the glyph rather than the disc is deliberate. The disc
+    merges into dark photo content - a doorway, a carved wooden frame -
+    which destroys any size or shape filter applied to the disc blob
+    itself (observed: a heart fused into a 174x974 blob). The glyph never
+    touches the photo, because the disc encloses it.
     """
-    arr = _png_to_array(png)
-    mask = (arr[..., 0] > 235) & (arr[..., 1] > 235) & (arr[..., 2] > 235)
-    labeled, _ = label(mask)
-    hearts = []
+    labeled, _ = label(glyph)
+    out = []
     for i, sl in enumerate(find_objects(labeled), 1):
         if sl is None:
             continue
         y0, y1 = sl[0].start, sl[0].stop
         x0, x1 = sl[1].start, sl[1].stop
         h, w = y1 - y0, x1 - x0
+        # Measured glyph across builds: 60x55, area ~1168.
+        if not (40 < w < 80 and 35 < h < 75):
+            continue
         area = (labeled[sl] == i).sum()
-        if not (100 < h < 140 and 100 < w < 140):
+        if not (800 < area < 1900):
             continue
-        if abs(w - h) >= 15:
-            continue
-        if area < 8500 or area > 12000:
-            continue
-        cx = (x0 + x1) // 2
+        cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
         if cx <= 800:
             continue
-        cy = (y0 + y1) // 2
-        hearts.append((cy, cx))
-    if not hearts:
-        return None
-    hearts.sort()
-    cy, cx = hearts[0]
-    return (cx, cy)
+        # Both radii sit inside the ~126px disc but outside the ~60px
+        # glyph, so both rings must be disc-coloured.
+        if _ring_fraction(disc, cx, cy, 50) < 0.80:
+            continue
+        if _ring_fraction(disc, cx, cy, 58) < 0.80:
+            continue
+        out.append((cy, cx))
+    return out
+
+
+def find_first_heart(png: bytes) -> tuple[int, int] | None:
+    """Locate the heart icon on photo 1 (topmost heart in current view).
+
+    Hinge's heart-on-photo widget is a ~126px circle at the photo's
+    bottom-right, containing a ~60x55 heart glyph. Two builds exist: a
+    DARK disc with a white glyph (current), and an older WHITE disc with
+    a dark glyph. Both are checked.
+
+    Returns the topmost hit (lowest y) - photo 1 when scrolled to top.
+    """
+    hearts = find_hearts(png)
+    return hearts[0] if hearts else None
+
+
+def find_hearts(png: bytes) -> list[tuple[int, int]]:
+    """Every heart icon in the current view, ordered top to bottom.
+
+    Each photo and prompt card carries its own heart, and liking via a
+    given card attaches the like to THAT content. Returns (x, y) centres
+    so callers can aim at the card the opener actually talks about.
+    """
+    arr = _png_to_array(png)
+    white = (arr[..., 0] > 235) & (arr[..., 1] > 235) & (arr[..., 2] > 235)
+    dark = arr.max(axis=-1) < 90
+
+    hearts = _hearts_by_glyph(white, dark)
+    hearts += _hearts_by_glyph(dark, white)
+    hearts.sort()                      # by y, then x
+    return [(cx, cy) for cy, cx in hearts]
 
 
 def comment_field_text_pixels(png: bytes, send_like_xy: tuple[int, int]) -> int:

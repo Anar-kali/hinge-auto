@@ -142,6 +142,18 @@ DECIDE_INPUT_SCHEMA = {
                 "string when the message was written fresh or is empty."
             ),
         },
+        "reference_frame": {
+            "type": "integer",
+            "description": (
+                "0-based index of the screenshot frame containing the "
+                "photo or prompt the message references. The frames are "
+                "given in scroll order, so frame 0 is the top of the "
+                "profile. The like is attached to the card on THIS frame, "
+                "so it must be the frame showing the thing the message "
+                "actually talks about. Use 0 when the message is empty "
+                "or references nothing specific."
+            ),
+        },
         "prompt_referenced": {
             "type": "string",
             "description": (
@@ -156,7 +168,7 @@ DECIDE_INPUT_SCHEMA = {
     "required": [
         "name", "decision", "confidence", "reasoning", "message",
         "skip_reason", "message_archetype", "premade_id",
-        "prompt_referenced",
+        "prompt_referenced", "reference_frame",
     ],
 }
 
@@ -172,6 +184,15 @@ class Decision:
     message_archetype: str = "empty"
     premade_id: str = ""
     prompt_referenced: str = ""
+    # Which captured frame shows the thing `message` is about. do_like
+    # scrolls there so the like lands on that card instead of always
+    # photo 1. 0 = top of profile.
+    reference_frame: int = 0
+    # Model's own reasoning trace, when the backend can surface one.
+    # Gemini returns thought-summary parts; Anthropic/Ollama leave this
+    # empty. Distinct from `reasoning`, which is the one-line
+    # justification the model writes into the tool call.
+    thinking: str = ""
     usage: dict[str, Any] = field(default_factory=dict)
 
 
@@ -294,6 +315,10 @@ def load_backend():
     if backend == "ollama":
         import judge_ollama
         return judge_ollama
+    if backend == "gemini":
+        import judge_gemini
+        return judge_gemini
     raise ValueError(
-        f"Unknown JUDGE_BACKEND={backend!r}. Use 'anthropic' or 'ollama'."
+        f"Unknown JUDGE_BACKEND={backend!r}. "
+        f"Use 'anthropic', 'ollama', or 'gemini'."
     )

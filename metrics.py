@@ -31,6 +31,21 @@ def estimated_cost(usage: dict[str, int]) -> float:
     )
 
 
+def active_model() -> str:
+    """Model the active backend is currently pointed at.
+
+    Read at log time, not run start: main.py's --models chain rewrites
+    config.GEMINI_MODEL mid-session, so a chained run's log needs the
+    model that actually judged each profile.
+    """
+    backend = getattr(config, "JUDGE_BACKEND", "anthropic").lower()
+    return {
+        "anthropic": getattr(config, "MODEL", ""),
+        "gemini": getattr(config, "GEMINI_MODEL", ""),
+        "ollama": getattr(config, "OLLAMA_MODEL", ""),
+    }.get(backend, "")
+
+
 def log_profile(
     profile_idx: int,
     decision,
@@ -46,15 +61,19 @@ def log_profile(
         "profile_idx": profile_idx,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "mode": config.MODE_NAME,
+        "backend": getattr(config, "JUDGE_BACKEND", "anthropic").lower(),
+        "judge_model": active_model(),
         "name": decision.name,
         "decision": decision.decision,
         "confidence": decision.confidence,
         "reasoning": decision.reasoning,
+        "thinking": decision.thinking,
         "message": decision.message,
         "message_length": len(decision.message),
         "message_archetype": decision.message_archetype,
         "premade_id": decision.premade_id,
         "prompt_referenced": decision.prompt_referenced,
+        "reference_frame": decision.reference_frame,
         "skip_reason": decision.skip_reason,
         "timing": timing,
         "tokens": decision.usage,

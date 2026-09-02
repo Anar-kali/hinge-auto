@@ -14,7 +14,7 @@ from pathlib import Path
 
 # ---------- Mode selection ----------
 # Which `modes/<name>.py` to load. Overridden per-run by `python main.py --mode X`.
-ACTIVE_MODE = "example_lenient"
+ACTIVE_MODE = "tarun"
 
 # These get filled in by _apply_mode() at the bottom of this file. Declared
 # here so static analyzers / IDEs see them. Do not edit by hand — edit the
@@ -48,8 +48,8 @@ DRY_RUN = False
 # run multiple sessions throughout the day. Going much higher per session
 # tends to trigger Hinge's soft-throttle (empty Discover after a burst);
 # spacing batches across the day works better than one giant batch.
-MAX_LIKES_PER_SESSION = 8
-MAX_PROFILES_PER_SESSION = 100
+MAX_LIKES_PER_SESSION = 10
+MAX_PROFILES_PER_SESSION = 25
 
 # ---------- Emulator settings ----------
 # Pixel 10 (and recent Pixel models) are 1080x2424. Change if you're using
@@ -119,7 +119,8 @@ DELAYS = {
 # "anthropic" -> uses your ANTHROPIC_API_KEY; best quality, ~$0.02-0.05/profile.
 # "ollama"    -> uses Ollama Cloud (free tier) or local Ollama; lower quality
 #                but no per-token cost.
-JUDGE_BACKEND = "anthropic"
+# "gemini"    -> uses Gemini via GEMINI_API_KEY; much cheaper than Sonnet.
+JUDGE_BACKEND = "gemini"
 
 # ---------- Anthropic settings (when JUDGE_BACKEND == "anthropic") ----------
 # Sonnet is the default — cheaper than Opus and plenty capable for this task.
@@ -139,6 +140,50 @@ OLLAMA_MODEL = "qwen2.5-vl"
 #              "https://ollama.com" -> Ollama Cloud (requires OLLAMA_API_KEY)
 # Can also be set via the OLLAMA_HOST environment variable.
 OLLAMA_HOST = None
+
+# ---------- Gemini settings (when JUDGE_BACKEND == "gemini") ----------
+# GEMINI_API_KEY must be set in .env or the environment.
+#
+# Benchmarked 2026-08-27 on 6 saved profiles against Sonnet's verdicts
+# under the `tarun` rubric (agreement / errors / avg latency):
+#
+#   gemini-3.5-flash        5/6   0 errors   29.9s   <- chosen (Tarun's
+#                                 pick on message quality; wrote the best
+#                                 single opener of the whole benchmark)
+#   gemini-3.5-flash-lite   6/6   0 errors   26.5s
+#   gemini-3.1-flash-lite   6/6   0 errors   33.0s
+#   gemini-3.6-flash        5/6   0 errors   46.6s
+#   gemini-3.7-flash        1/4   heavy 503s
+#
+# Known trait of 3.5-flash: it judges the intelligence bar slightly
+# harder than Sonnet. On a 3-sample-per-profile rerun it skipped one
+# profile Sonnet liked, 3 times out of 3 — a stable property, not
+# variance. Expect a somewhat lower like rate than Sonnet's ~75%.
+#
+# 3.7-flash is NOT recommended despite being newest: it was released
+# 2026-08-13 and is still capacity-constrained (503 "high demand" on
+# most calls), and it judges far more harshly than Sonnet, skipping 3
+# of 4 profiles Sonnet liked, all at high confidence. Every older model
+# completed all 24 benchmark calls without a single error.
+#
+# EFFORT above is honoured here too: it maps onto Gemini's thinking
+# level (low | medium | high), same knob as the Anthropic backend.
+GEMINI_MODEL = "gemini-3.5-flash"
+
+# Fallback chain. Free-tier Gemini allows 20 requests/day *per model*
+# (GenerateRequestsPerDayPerProjectPerModel), so one model tops out at 20
+# judged profiles/day. When main.py sees a RESOURCE_EXHAUSTED it advances
+# to the next model here and re-judges the frames it already captured,
+# instead of halting the session. Order is quality-first: the best judge
+# runs until its quota is spent, then the next.
+#
+# Set to [] (or a single entry) to disable chaining and halt on quota.
+# Override per-run with `python main.py --models a,b,c`.
+GEMINI_MODEL_CHAIN = [
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+]
 
 # ---------- Paths ----------
 BASE_DIR = Path(__file__).parent

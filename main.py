@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import re
 import sys
+import textwrap
 import time
 from datetime import datetime
 from pathlib import Path
@@ -82,9 +83,51 @@ def do_skip() -> None:
     adb.jitter_sleep("after_skip")
 
 
-def do_like(message: str = "") -> None:
-    """In live mode: scroll to top, tap heart, type message (if any), tap Send Like.
-    In dry run: advance by skipping (so we never send an actual like).
+def _aim_at_frame(frame_idx: int) -> tuple[int, int] | None:
+    """Scroll to `frame_idx` and return the heart of the card shown there.
+
+    Liking through a card attaches the like to THAT photo or prompt, so
+    an opener about a detail in photo 5 should like photo 5 — not photo
+    1 with an unrelated comment stapled to it.
+
+    Two constraints fight here. The compose card anchors to the tapped
+    heart and grows DOWNWARD, so a heart low on screen pushes Send Like
+    off-screen and undetectable. But the referenced card is only on
+    screen after scrolling down to it. So: scroll to the frame, then
+    accept a heart only in the upper band where there is room below.
+    Walk back up a frame at a time if there isn't one; the caller falls
+    back to photo 1 if we run out.
+    """
+    # Anchor the "room below" limit to photo 1's calibrated heart rather
+    # than a guessed fraction of the screen: tapping there is the proven
+    # path, so anything at or above it has at least as much room. A
+    # fraction-based cutoff (0.55 => y=1333) rejects photo 1 itself at
+    # y~1414 and would send every aimed like down the fallback.
+    heart_x, heart_y = config.COORDS["heart_photo_1"]
+    max_y = heart_y + 40
+    for idx in range(frame_idx, -1, -1):
+        scroll_back_to_top()
+        for _ in range(idx):
+            adb.scroll_down()
+            adb.jitter_sleep("after_scroll")
+        hearts = vision.find_hearts(adb.screenshot())
+        # Card hearts sit in a fixed right-hand column. Glyph matching
+        # also picks up heart shapes inside photos and badges (observed
+        # at x=829 and x=918 against a real column at x=938), so drop
+        # anything off-column before choosing.
+        usable = [
+            h for h in hearts
+            if h[1] <= max_y and abs(h[0] - heart_x) <= 40
+        ]
+        if usable:
+            return usable[-1]   # lowest heart still leaving room below
+    return None
+
+
+def do_like(message: str = "", reference_frame: int = 0) -> None:
+    """In live mode: aim at the referenced card, tap its heart, type the
+    message (if any), tap Send Like. In dry run: advance by skipping (so
+    we never send an actual like).
 
     Send Like / comment input positions are found at tap-time via vision —
     the compose card anchors to whichever heart was tapped and shifts per
@@ -93,12 +136,24 @@ def do_like(message: str = "") -> None:
     if config.DRY_RUN:
         do_skip()
         return
-    # Scroll back to the top before tapping a heart. The compose box
-    # anchors to the tapped element and extends DOWNWARD — if we tap
-    # a heart that's already low on screen (which it is after capture),
-    # Send Like ends up off-screen and undetectable. Worth the ~14s.
-    scroll_back_to_top()
-    heart_xy = vision.find_first_heart(adb.screenshot())
+
+    heart_xy = None
+    if reference_frame > 0:
+        print(f"  aiming like at frame {reference_frame}")
+        heart_xy = _aim_at_frame(reference_frame)
+        if heart_xy is not None:
+            print(f"  aimed heart at {heart_xy}")
+        if heart_xy is None:
+            print(f"  no usable heart on frame {reference_frame} — "
+                  f"falling back to photo 1.")
+
+    if heart_xy is None:
+        # Scroll back to the top before tapping a heart. The compose box
+        # anchors to the tapped element and extends DOWNWARD — if we tap
+        # a heart that's already low on screen (which it is after capture),
+        # Send Like ends up off-screen and undetectable. Worth the ~14s.
+        scroll_back_to_top()
+        heart_xy = vision.find_first_heart(adb.screenshot())
     if heart_xy is None:
         # Static fallback used to fire here, but it silently misses on
         # profiles where the heart's real position differs from the
@@ -127,18 +182,45 @@ def do_like(message: str = "") -> None:
         # Poll for the field to fill. Under host CPU contention (e.g. a
         # game running alongside the emulator) `input text` events can
         # dispatch slower than expected — short fixed waits drop chars.
-        # Expected pixel count grows with message length; require we see
-        # well above the empty baseline before sending.
-        deadline = time.monotonic() + 15
-        target_pixels = empty_pixels + max(150, 20 * len(message))
+        #
+        # Wait for the density to STOP CHANGING rather than to cross an
+        # absolute target. Pixels-per-character varies far too much with
+        # font, wrapping and message content for a fixed estimate: real
+        # runs measured 9.7-17 px/char on fully-typed fields. A fixed
+        # target both warns on complete text and — worse — can pass a
+        # partially-typed field that happens to be dense. Stability is
+        # the signal that `input text` has finished dispatching.
+        deadline = time.monotonic() + 20
+        min_expected = empty_pixels + 150
+        prev, stable, current = -1, 0, empty_pixels
         while time.monotonic() < deadline:
-            time.sleep(1.0)
-            current = vision.comment_field_text_pixels(adb.screenshot(), send_xy)
-            if current >= target_pixels:
-                break
+            time.sleep(0.8)
+            shot = adb.screenshot()
+            # Re-find Send Like every poll. As the text wraps, the compose
+            # card grows and pushes the button DOWN; a region anchored to
+            # the pre-typing position drifts off the comment box onto the
+            # photo above it and then reports FEWER dark pixels than the
+            # empty-field baseline. Observed as spurious sub-baseline
+            # warnings (407 and 491 against a baseline of 567) on messages
+            # that had in fact been typed correctly.
+            moved = vision.find_send_like(shot)
+            if moved is not None:
+                send_xy = moved
+            current = vision.comment_field_text_pixels(shot, send_xy)
+            # Tolerance, not equality: the EditText caret blinks, so the
+            # dark-pixel count oscillates by roughly a caret's worth
+            # (~3x40px) between samples even after typing has finished.
+            settled = abs(current - prev) <= max(200, current // 50)
+            if settled and current > min_expected:
+                stable += 1
+                if stable >= 2:
+                    break
+            else:
+                stable = 0
+            prev = current
         else:
-            print(f"WARN: typed text didn't reach expected pixel density "
-                  f"(have {current}, want {target_pixels}) — sending anyway.")
+            print(f"WARN: comment field never settled above baseline "
+                  f"(have {current}, baseline {empty_pixels}) — sending anyway.")
         # Typed text can wrap to multiple lines, expanding the comment
         # field and pushing Send Like down. Re-find against the post-type
         # screen so the tap lands on the actual button position.
@@ -174,6 +256,47 @@ def save_debug(frames: list[bytes], decision, profile_idx: int) -> None:
     )
 
 
+# Gemini model fallback chain (see config.GEMINI_MODEL_CHAIN). Module
+# state rather than a parameter because the judge call site is three
+# frames deep in the loop and only ever needs "advance to the next one".
+_model_chain: list[str] = []
+_model_idx: int = 0
+
+
+def advance_model() -> bool:
+    """Point the Gemini backend at the next model in the chain.
+
+    Returns False when the chain is exhausted, which is the caller's cue
+    to treat the quota error as fatal after all. Works because
+    judge_gemini reads config.GEMINI_MODEL at call time — that late read
+    is the seam that lets a model swap take effect mid-session.
+    """
+    global _model_idx
+    if _model_idx + 1 >= len(_model_chain):
+        return False
+    _model_idx += 1
+    config.GEMINI_MODEL = _model_chain[_model_idx]
+    print(f"[chain] daily quota spent — switching to {config.GEMINI_MODEL} "
+          f"({_model_idx + 1}/{len(_model_chain)})")
+    return True
+
+
+def _init_model_chain(models_arg: str | None) -> None:
+    """Resolve the chain from --models, else config, else the single model."""
+    global _model_idx
+    if getattr(config, "JUDGE_BACKEND", "").lower() != "gemini":
+        return
+    if models_arg:
+        chain = [m.strip() for m in models_arg.split(",") if m.strip()]
+    else:
+        chain = list(getattr(config, "GEMINI_MODEL_CHAIN", []) or [])
+    if not chain:
+        chain = [config.GEMINI_MODEL]
+    _model_chain[:] = chain
+    _model_idx = 0
+    config.GEMINI_MODEL = chain[0]
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="HingeAuto loop runner")
     p.add_argument(
@@ -198,6 +321,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "out-of-area changes.",
     )
     p.add_argument(
+        "--models",
+        default=None,
+        help="Comma-separated Gemini fallback chain for this run, "
+             "overriding config.GEMINI_MODEL_CHAIN (e.g. "
+             "'gemini-3.5-flash,gemini-3.6-flash'). When a model's daily "
+             "quota is spent the run continues on the next one.",
+    )
+    p.add_argument(
         "--rotate",
         default=None,
         help="Named rotation path from locations.json _rotations (e.g. "
@@ -216,8 +347,12 @@ def main() -> int:
         config.ACTIVE_MODE = args.mode
         config._apply_mode()
 
+    _init_model_chain(args.models)
+
     serial = adb.check_device()
     print(f"Connected to: {serial}")
+    if len(_model_chain) > 1:
+        print(f"Chain:    {' -> '.join(_model_chain)}")
     age_band = (
         f"age {config.AGE_MIN}-{config.AGE_MAX}"
         if (config.AGE_MIN is not None or config.AGE_MAX is not None)
@@ -324,13 +459,20 @@ def main() -> int:
         t1 = time.monotonic()
         decision = None
         fatal_error = None
-        for attempt in range(3):
+        attempt = 0
+        while attempt < 3:
             try:
                 decision = judge(frames)
                 break
             except Exception as e:
                 err = repr(e)
                 print(f"Judge attempt {attempt + 1}/3 failed: {e}")
+                # Daily-quota exhaustion is only fatal once the chain runs
+                # out. While a model is left, swap it in and re-judge the
+                # frames already in hand — no attempt consumed and no
+                # re-capture, because nothing was wrong with this profile.
+                if "RESOURCE_EXHAUSTED" in err and advance_model():
+                    continue
                 # Halt on errors that won't recover with a retry — burning
                 # through Hinge swipes blind (force-skipping every profile
                 # without a real decision) eats the daily quota and looks
@@ -338,15 +480,26 @@ def main() -> int:
                 # balance hit zero mid-run: 124 profiles got blindly skipped
                 # before we noticed.
                 if any(s in err for s in (
+                    # Anthropic
                     "credit balance is too low",
                     "authentication_error",
                     "invalid_api_key",
                     "permission_error",
+                    # Gemini — different error vocabulary entirely, and
+                    # without these a dead key or exhausted free-tier
+                    # quota force-skips every remaining profile instead
+                    # of halting.
+                    "API_KEY_INVALID",
+                    "UNAUTHENTICATED",
+                    "PERMISSION_DENIED",
+                    "RESOURCE_EXHAUSTED",
+                    "GEMINI_API_KEY not set",
                 )):
                     fatal_error = err
                     break
-                if attempt < 2:
-                    time.sleep(5 * (attempt + 1))
+                attempt += 1
+                if attempt < 3:
+                    time.sleep(5 * attempt)
         if fatal_error is not None:
             print(f"\nFATAL judge error — halting loop instead of burning "
                   f"Hinge swipes:\n  {fatal_error}")
@@ -356,6 +509,16 @@ def main() -> int:
             print("Judge failed 3 times — skipping this profile to keep the loop alive.")
             do_skip()
             continue
+
+        if decision.thinking:
+            print("\nThinking:")
+            for src in decision.thinking.splitlines():
+                if not src.strip():
+                    print("  |")
+                    continue
+                for line in textwrap.wrap(src, width=76) or [""]:
+                    print(f"  | {line}")
+            print()
 
         print(f"Name:     {decision.name}")
         print(f"Decision: {decision.decision} ({decision.confidence}) "
@@ -371,7 +534,7 @@ def main() -> int:
                 print(f"Hit max likes cap ({config.MAX_LIKES_PER_SESSION}). Stopping.")
                 break
             try:
-                do_like(decision.message)
+                do_like(decision.message, decision.reference_frame)
                 likes_sent += 1
             except Exception as e:
                 print(f"do_like failed: {e!r} — recovering by skipping this profile.")
