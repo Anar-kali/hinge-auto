@@ -112,7 +112,9 @@ Explicitly:
 
 ## Hard exclusion
 
-Skip if she is clearly obese. Use skip_reason="preferences".
+Skip if she is visibly overweight or heavier — this covers clearly
+obese AND clearly chubby/heavyset, not obesity alone. Use
+skip_reason="preferences".
 
 This is the one physical criterion that is a gate rather than a lean.
 Apply it carefully:
@@ -123,6 +125,8 @@ Apply it carefully:
   Fall through to the rest of the rubric and judge on intelligence.
   A wrong skip here is worse than a wrong like — it costs a profile
   that may well have matched.
+- Being fit or average build is not this gate. It only fires once body
+  type reads as visibly heavier than average across multiple photos.
 
 ## Also skip
 
